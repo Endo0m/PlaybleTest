@@ -1,177 +1,151 @@
-import {
-  _decorator,
-  Component,
-  Animation,
-  AnimationClip,
-  AnimationState,
-  Collider2D,
-  Contact2DType,
-  IPhysics2DContact,
-} from 'cc';
-import { GameStateMachine } from '../../Core/StateMachine/GameStateMachine';
-import { GameState } from '../../Core/StateMachine/GameState';
-import { GameEvents } from '../../Core/Events/GameEvents';
-import { CollisionTags } from '../Systems/CollisionTags';
+import { _decorator, Component, Animation, AnimationClip, AnimationState } from 'cc';
+import { GameStateController } from '../../Core/GameStateController';
+import { PauseService } from '../../Core/PauseService';
 
 const { ccclass, property } = _decorator;
 
 enum PlayerAnimationMode {
-  Idle = 'Idle',
-  Run = 'Run',
-  Jump = 'Jump',
+    Idle = 'Idle',
+    Run = 'Run',
+    Jump = 'Jump',
+    Hurt = 'Hurt',
 }
 
 @ccclass('PlayerAnimationController')
 export class PlayerAnimationController extends Component {
-  @property({ type: Animation })
-  public animationComponent: Animation | null = null;
+    @property({ type: Animation })
+    public animationComponent: Animation | null = null;
 
-  @property
-  public idleClipName: string = 'idle';
+    @property({ type: GameStateController })
+    public gameStateController: GameStateController | null = null;
 
-  @property
-  public runClipName: string = 'run';
+    @property
+    public idleClipName = 'idle';
 
-  @property
-  public jumpClipName: string = 'jump';
+    @property
+    public runClipName = 'run';
 
-  @property({ type: Collider2D })
-  public bodyCollider: Collider2D | null = null;
+    @property
+    public jumpClipName = 'jump';
 
-  private stateMachine: GameStateMachine | null = null;
-  private isGrounded: boolean = false;
-  private activeMode: PlayerAnimationMode = PlayerAnimationMode.Idle;
+    @property
+    public hurtClipName = 'hurt';
 
-  public initialize(stateMachine: GameStateMachine): void {
-    this.stateMachine = stateMachine;
+    private activeMode: PlayerAnimationMode = PlayerAnimationMode.Idle;
+    private isGrounded = true;
 
-    GameEvents.instance.on(GameEvents.GameStarted, this.onGameStarted, this);
-    GameEvents.instance.on(GameEvents.GameStateChanged, this.onGameStateChanged, this);
+    private readonly pauseService: PauseService = PauseService.instance;
 
-    if (this.bodyCollider) {
-      this.bodyCollider.on(Contact2DType.BEGIN_CONTACT, this.onBeginContact, this);
-      this.bodyCollider.on(Contact2DType.END_CONTACT, this.onEndContact, this);
-    }
-  }
+    onEnable(): void {
+        if (this.animationComponent) {
+            this.animationComponent.on(Animation.EventType.FINISHED, this.onAnimationFinished, this);
+        }
 
-  public onDestroy(): void {
-    GameEvents.instance.off(GameEvents.GameStarted, this.onGameStarted, this);
-    GameEvents.instance.off(GameEvents.GameStateChanged, this.onGameStateChanged, this);
+        this.node.on('GameStarted', this.onGameStarted, this);
+        this.node.on('TutorialStarted', this.onTutorialStarted, this);
+        this.node.on('TutorialEnded', this.onTutorialEnded, this);
 
-    if (this.bodyCollider) {
-      this.bodyCollider.off(Contact2DType.BEGIN_CONTACT, this.onBeginContact, this);
-      this.bodyCollider.off(Contact2DType.END_CONTACT, this.onEndContact, this);
-    }
+        this.node.on('PlayerJumped', this.onPlayerJumped, this);
+        this.node.on('PlayerLanded', this.onPlayerLanded, this);
+        this.node.on('PlayerHurt', this.onPlayerHurt, this);
 
-    if (this.animationComponent) {
-      this.animationComponent.off(Animation.EventType.FINISHED, this.onAnimationFinished, this);
-    }
-  }
-
-  public start(): void {
-    if (this.animationComponent) {
-      this.animationComponent.on(Animation.EventType.FINISHED, this.onAnimationFinished, this);
+        this.setMode(PlayerAnimationMode.Idle);
     }
 
-    this.setMode(PlayerAnimationMode.Idle);
-  }
+    onDisable(): void {
+        this.node.off('GameStarted', this.onGameStarted, this);
+        this.node.off('TutorialStarted', this.onTutorialStarted, this);
+        this.node.off('TutorialEnded', this.onTutorialEnded, this);
 
-  public setGrounded(grounded: boolean): void {
-    this.isGrounded = grounded;
+        this.node.off('PlayerJumped', this.onPlayerJumped, this);
+        this.node.off('PlayerLanded', this.onPlayerLanded, this);
+        this.node.off('PlayerHurt', this.onPlayerHurt, this);
 
-    if (this.isGrounded && this.activeMode === PlayerAnimationMode.Jump) {
-      if (this.stateMachine && this.stateMachine.isGameplayActive()) {
+        if (this.animationComponent) {
+            this.animationComponent.off(Animation.EventType.FINISHED, this.onAnimationFinished, this);
+        }
+    }
+
+    private onGameStarted(): void {
+        this.isGrounded = true;
         this.setMode(PlayerAnimationMode.Run);
-      }
-    }
-  }
-
-  public triggerJump(): void {
-    if (this.isGrounded) {
-      this.setMode(PlayerAnimationMode.Jump);
-    }
-  }
-
-  private onGameStarted(): void {
-    if (this.stateMachine && this.stateMachine.isGameplayActive()) {
-      this.setMode(PlayerAnimationMode.Run);
-    }
-  }
-
-  private onGameStateChanged(_previousState: GameState, newState: GameState): void {
-    if (newState === GameState.Ready || newState === GameState.Boot) {
-      this.setMode(PlayerAnimationMode.Idle);
-    } else if (newState === GameState.Running && this.isGrounded) {
-      this.setMode(PlayerAnimationMode.Run);
-    }
-  }
-
-  private setMode(nextMode: PlayerAnimationMode): void {
-    if (this.activeMode === nextMode) {
-      return;
     }
 
-    this.activeMode = nextMode;
-
-    switch (nextMode) {
-      case PlayerAnimationMode.Idle:
-        this.playWithWrapMode(this.idleClipName, AnimationClip.WrapMode.Loop);
-        break;
-      case PlayerAnimationMode.Run:
-        this.playWithWrapMode(this.runClipName, AnimationClip.WrapMode.Loop);
-        break;
-      case PlayerAnimationMode.Jump:
-        this.playWithWrapMode(this.jumpClipName, AnimationClip.WrapMode.Normal);
-        break;
-    }
-  }
-
-  private playWithWrapMode(clipName: string, wrapMode: AnimationClip.WrapMode): void {
-    const animationComponent = this.animationComponent;
-    if (!animationComponent) {
-      return;
+    private onTutorialStarted(): void {
+        this.setMode(PlayerAnimationMode.Idle);
     }
 
-    animationComponent.play(clipName);
-
-    const state = animationComponent.getState(clipName);
-    if (state) {
-      state.wrapMode = wrapMode;
-    }
-  }
-
-  private onAnimationFinished(_type: string, state: AnimationState): void {
-    if (!this.stateMachine || !this.stateMachine.isGameplayActive()) {
-      return;
+    private onTutorialEnded(): void {
+        if (this.gameStateController && this.gameStateController.isGameplayActive()) {
+            this.setMode(this.isGrounded ? PlayerAnimationMode.Run : PlayerAnimationMode.Jump);
+        }
     }
 
-    if (state && state.name === this.jumpClipName) {
-      if (this.isGrounded) {
-        this.setMode(PlayerAnimationMode.Run);
-      }
-    }
-  }
+    private onPlayerJumped(): void {
+        if (this.pauseService.isGamePaused()) return;
+        if (!this.gameStateController || !this.gameStateController.isGameplayActive()) return;
 
-  private onBeginContact(selfCollider: Collider2D, otherCollider: Collider2D, _contact: IPhysics2DContact | null): void {
-    if (selfCollider !== this.bodyCollider) {
-      return;
+        if (this.activeMode === PlayerAnimationMode.Hurt) return;
+
+        this.isGrounded = false;
+        this.setMode(PlayerAnimationMode.Jump);
     }
 
-    const tag = otherCollider.tag as number;
-    if (tag === CollisionTags.Ground) {
-      this.setGrounded(true);
-    }
-  }
+    private onPlayerLanded(): void {
+        if (this.pauseService.isGamePaused()) return;
+        if (!this.gameStateController || !this.gameStateController.isGameplayActive()) return;
 
-  private onEndContact(selfCollider: Collider2D, otherCollider: Collider2D, _contact: IPhysics2DContact | null): void {
-    if (selfCollider !== this.bodyCollider) {
-      return;
+        this.isGrounded = true;
+
+        if (this.activeMode !== PlayerAnimationMode.Hurt) {
+            this.setMode(PlayerAnimationMode.Run);
+        }
     }
 
-    const tag = otherCollider.tag as number;
-    if (tag === CollisionTags.Ground) {
-      this.setGrounded(false);
+    private onPlayerHurt(): void {
+        if (this.pauseService.isGamePaused()) return;
+        if (!this.gameStateController || !this.gameStateController.isGameplayActive()) return;
+
+        this.setMode(PlayerAnimationMode.Hurt);
     }
-  }
+
+    private setMode(nextMode: PlayerAnimationMode): void {
+        if (this.activeMode === nextMode) return;
+
+        this.activeMode = nextMode;
+
+        switch (nextMode) {
+            case PlayerAnimationMode.Idle:
+                this.play(this.idleClipName, AnimationClip.WrapMode.Loop);
+                break;
+            case PlayerAnimationMode.Run:
+                this.play(this.runClipName, AnimationClip.WrapMode.Loop);
+                break;
+            case PlayerAnimationMode.Jump:
+                this.play(this.jumpClipName, AnimationClip.WrapMode.Normal);
+                break;
+            case PlayerAnimationMode.Hurt:
+                this.play(this.hurtClipName, AnimationClip.WrapMode.Normal);
+                break;
+        }
+    }
+
+    private play(clipName: string, wrapMode: AnimationClip.WrapMode): void {
+        const anim = this.animationComponent;
+        if (!anim) return;
+
+        anim.play(clipName);
+
+        const state = anim.getState(clipName);
+        if (state) state.wrapMode = wrapMode;
+    }
+
+    private onAnimationFinished(_type: string, state: AnimationState): void {
+        if (!this.gameStateController || !this.gameStateController.isGameplayActive()) return;
+        if (!state) return;
+
+        if (state.name === this.hurtClipName) {
+            this.setMode(this.isGrounded ? PlayerAnimationMode.Run : PlayerAnimationMode.Jump);
+        }
+    }
 }
-

@@ -1,6 +1,6 @@
 import { _decorator, Component, Node } from 'cc';
 import { GameEvents } from '../../Core/Events/GameEvents';
-import { GameState } from '../../Core/StateMachine/GameState';
+
 
 const { ccclass, property } = _decorator;
 
@@ -12,7 +12,7 @@ export class TutorialOverlay extends Component {
     public onLoad(): void {
         GameEvents.instance.on(GameEvents.TutorialTriggered, this.show, this);
         GameEvents.instance.on(GameEvents.TutorialDismissed, this.hide, this);
-        GameEvents.instance.on(GameEvents.GameStateChanged, this.onGameStateChanged, this);
+       
         
         this.hide();
     }
@@ -20,7 +20,7 @@ export class TutorialOverlay extends Component {
     public onDestroy(): void {
         GameEvents.instance.off(GameEvents.TutorialTriggered, this.show, this);
         GameEvents.instance.off(GameEvents.TutorialDismissed, this.hide, this);
-        GameEvents.instance.off(GameEvents.GameStateChanged, this.onGameStateChanged, this);
+      
     }
 
     private show(): void {
@@ -33,12 +33,10 @@ export class TutorialOverlay extends Component {
         node.active = false;
     }
 
-    private onGameStateChanged(_previousState: GameState, newState: GameState): void {
-        if (newState === GameState.Tutorial) {
-            this.show();
-        } else {
-            this.hide();
-        }
-    }
+ 
 }
+
+
+
+
 

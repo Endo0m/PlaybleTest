@@ -3,15 +3,6 @@ import { GameStateController, GameState } from './GameStateController';
 
 const { ccclass, property } = _decorator;
 
-/**
- * Центральный роутер для обработки тапов
- * Маршрутизирует тапы в зависимости от текущего состояния игры
- * @property fields в Inspector:
- * - gameStateController: GameStateController - контроллер состояний игры
- * - onTapStartGame: функция вызывается при тапе в состоянии Waiting (начало игры)
- * - onTapJump: функция вызывается при тапе в состоянии Running (прыжок)
- * - onTapTutorial: функция вызывается при тапе в состоянии Tutorial (закрыть туториал)
- */
 export type TapCallback = () => void;
 
 @ccclass('InputTapRouter')
@@ -23,11 +14,11 @@ export class InputTapRouter extends Component {
     private onTapJumpCallbacks: TapCallback[] = [];
     private onTapTutorialCallbacks: TapCallback[] = [];
 
-    public onLoad(): void {
+    onEnable(): void {
         input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
     }
 
-    public onDestroy(): void {
+    onDisable(): void {
         input.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
     }
 
@@ -37,9 +28,23 @@ export class InputTapRouter extends Component {
         }
     }
 
+    public unregisterTapStartGame(callback: TapCallback): void {
+        const index = this.onTapStartGameCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.onTapStartGameCallbacks.splice(index, 1);
+        }
+    }
+
     public registerTapJump(callback: TapCallback): void {
         if (this.onTapJumpCallbacks.indexOf(callback) === -1) {
             this.onTapJumpCallbacks.push(callback);
+        }
+    }
+
+    public unregisterTapJump(callback: TapCallback): void {
+        const index = this.onTapJumpCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.onTapJumpCallbacks.splice(index, 1);
         }
     }
 
@@ -49,26 +54,34 @@ export class InputTapRouter extends Component {
         }
     }
 
+    public unregisterTapTutorial(callback: TapCallback): void {
+        const index = this.onTapTutorialCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.onTapTutorialCallbacks.splice(index, 1);
+        }
+    }
+
     private onTouchStart(_event: EventTouch): void {
-        if (!this.gameStateController) {
+        const controller = this.gameStateController;
+        if (!controller) {
             return;
         }
 
-        const state = this.gameStateController.getCurrentState();
+        const state = controller.getCurrentState();
 
         if (state === GameState.Waiting) {
-            for (const callback of this.onTapStartGameCallbacks) {
-                callback();
-            }
-        } else if (state === GameState.Running) {
-            for (const callback of this.onTapJumpCallbacks) {
-                callback();
-            }
-        } else if (state === GameState.Tutorial) {
-            for (const callback of this.onTapTutorialCallbacks) {
-                callback();
-            }
+            for (const cb of this.onTapStartGameCallbacks) cb();
+            return;
+        }
+
+        if (state === GameState.Running) {
+            for (const cb of this.onTapJumpCallbacks) cb();
+            return;
+        }
+
+        if (state === GameState.Tutorial) {
+            for (const cb of this.onTapTutorialCallbacks) cb();
+            return;
         }
     }
 }
-

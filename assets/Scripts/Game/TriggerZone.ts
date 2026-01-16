@@ -1,73 +1,61 @@
-import { _decorator, Component, Collider2D, Contact2DType, IPhysics2DContact } from 'cc';
-import { GameStateController, GameState } from '../Core/GameStateController';
+import { _decorator, Component } from 'cc';
+import { CollisionWorld, Collidable, HitboxKind } from '../Core/CollisionWorld';
+import { Hitbox2D } from '../Core/Hitbox2D';
 
 const { ccclass, property } = _decorator;
 
-/**
- * Зона триггера - для Tutorial и Finish триггеров
- * @property fields в Inspector:
- * - triggerType: 'Tutorial' | 'Finish' - тип триггера
- * - triggerCollider: Collider2D - коллайдер триггера (должен быть sensor)
- * - gameStateController: GameStateController - контроллер состояний
- * 
- * Теги коллайдера:
- * - TutorialTrigger: тег 5
- * - FinishTrigger: тег 4
- */
 export enum TriggerType {
     Tutorial = 'Tutorial',
     Finish = 'Finish',
 }
 
-@ccclass('TriggerZone')
-export class TriggerZone extends Component {
+@ccclass('TriggerZoneAabb')
+export class TriggerZone extends Component implements Collidable {
     @property({ type: String })
     public triggerType: string = TriggerType.Tutorial;
 
-    @property({ type: Collider2D })
-    public triggerCollider: Collider2D | null = null;
+    @property({ type: Hitbox2D })
+    public hitbox: Hitbox2D | null = null;
 
-    @property({ type: GameStateController })
-    public gameStateController: GameStateController | null = null;
+    @property({ type: CollisionWorld })
+    public collisionWorld: CollisionWorld | null = null;
 
-    private triggered: boolean = false;
+    public kind: HitboxKind = HitboxKind.Trigger;
 
-    public onLoad(): void {
-        const collider = this.triggerCollider || this.node.getComponent(Collider2D);
-        if (collider) {
-            collider.on(Contact2DType.BEGIN_CONTACT, this.onTriggerEnter, this);
+    private triggered = false;
+
+    onEnable(): void {
+        if (!this.hitbox) {
+            this.hitbox = this.node.getComponent(Hitbox2D);
         }
+
+        if (!this.collisionWorld) {
+            const scene = this.node.scene;
+            this.collisionWorld = scene ? scene.getComponentInChildren(CollisionWorld) : null;
+        }
+
+        this.collisionWorld?.register(this);
     }
 
-    public onDestroy(): void {
-        const collider = this.triggerCollider || this.node.getComponent(Collider2D);
-        if (collider) {
-            collider.off(Contact2DType.BEGIN_CONTACT, this.onTriggerEnter, this);
-        }
+    onDisable(): void {
+        this.collisionWorld?.unregister(this);
     }
 
-    private onTriggerEnter(_selfCollider: Collider2D, otherCollider: Collider2D, _contact: IPhysics2DContact | null): void {
-        if (this.triggered) {
-            return;
-        }
+    public isActive(): boolean {
+        return this.node.activeInHierarchy && !this.triggered;
+    }
 
-        if (otherCollider.tag !== 0) {
-            return;
-        }
-
+    public onHitPlayer(): void {
+        if (this.triggered) return;
         this.triggered = true;
 
+        const scene = this.node.scene;
+        if (!scene) return;
+
         if (this.triggerType === TriggerType.Tutorial) {
-            if (this.gameStateController) {
-                this.gameStateController.transitionTo(GameState.Tutorial);
-            }
-            this.node.emit('TutorialTriggered');
+            scene.emit('TutorialTriggered');
         } else if (this.triggerType === TriggerType.Finish) {
-            if (this.gameStateController) {
-                this.gameStateController.transitionTo(GameState.Victory);
-            }
-            this.node.emit('FinishTriggered');
+            scene.emit('FinishTriggered');
         }
     }
 }
-

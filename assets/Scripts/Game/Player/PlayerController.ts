@@ -1,114 +1,72 @@
-import { _decorator, Component, RigidBody2D, Vec2, Collider2D, Contact2DType, IPhysics2DContact } from 'cc';
-import { GameStateMachine } from '../../Core/StateMachine/GameStateMachine';
-import { CollisionTags } from '../Systems/CollisionTags';
-import { PlayerAnimationController } from './PlayerAnimationController';
-import { PlayerMovement } from './PlayerMovement';
-import { PlayerInvulnerability } from './PlayerInvulnerability';
-import { HealthSystem } from '../Systems/HealthSystem';
+import { _decorator, Component } from 'cc';
+import { GameStateController } from '../../Core/GameStateController';
+import { PauseService } from '../../Core/PauseService';
 
 const { ccclass, property } = _decorator;
 
 @ccclass('PlayerController')
 export class PlayerController extends Component {
-    @property({ type: RigidBody2D })
-    public rigidBody: RigidBody2D | null = null;
+    @property({ type: GameStateController })
+    public gameStateController: GameStateController | null = null;
 
-    @property({ type: Collider2D })
-    public bodyCollider: Collider2D | null = null;
+    @property
+    public groundY: number = -220;
 
-    @property({ type: PlayerAnimationController })
-    public animationController: PlayerAnimationController | null = null;
+    @property
+    public jumpVelocityPixelsPerSecond: number = 900;
 
-    @property({ type: PlayerMovement })
-    public movement: PlayerMovement | null = null;
+    @property
+    public gravityPixelsPerSecond2: number = 2600;
 
-    @property({ type: PlayerInvulnerability })
-    public invulnerability: PlayerInvulnerability | null = null;
+    private verticalVelocity = 0;
+    private isGrounded = true;
 
-    private stateMachine: GameStateMachine | null = null;
+    private readonly pauseService: PauseService = PauseService.instance;
 
-    public initialize(stateMachine: GameStateMachine, healthSystem: HealthSystem): void {
-        this.stateMachine = stateMachine;
-        
-        if (this.animationController) {
-            this.animationController.initialize(stateMachine);
-        }
-
-        if (this.movement) {
-            this.movement.initialize(stateMachine);
-        }
-
-        if (this.invulnerability) {
-            this.invulnerability.initialize(healthSystem);
-        }
-
-        if (this.bodyCollider) {
-            this.bodyCollider.on(Contact2DType.BEGIN_CONTACT, this.onBeginContact, this);
-            this.bodyCollider.on(Contact2DType.END_CONTACT, this.onEndContact, this);
-        }
+    onLoad(): void {
+        this.snapToGround();
     }
 
-    public onEndContact(selfCollider: Collider2D, otherCollider: Collider2D, _contact: IPhysics2DContact | null): void {
-        if (selfCollider !== this.bodyCollider) {
+    update(deltaTime: number): void {
+        if (this.pauseService.isGamePaused()) return;
+        if (!this.gameStateController || !this.gameStateController.isGameplayActive()) return;
+        if (this.isGrounded) return;
+
+        this.verticalVelocity -= this.gravityPixelsPerSecond2 * deltaTime;
+
+        const p = this.node.position;
+        const nextY = p.y + this.verticalVelocity * deltaTime;
+
+        if (nextY <= this.groundY) {
+            this.node.setPosition(p.x, this.groundY, p.z);
+            this.isGrounded = true;
+            this.verticalVelocity = 0;
+            this.node.emit('PlayerLanded');
             return;
         }
 
-        const tag = otherCollider.tag as number;
-        if (tag === CollisionTags.Ground) {
-            this.setGrounded(false);
-        }
-    }
-
-    public onDestroy(): void {
-        if (this.bodyCollider) {
-            this.bodyCollider.off(Contact2DType.BEGIN_CONTACT, this.onBeginContact, this);
-            this.bodyCollider.off(Contact2DType.END_CONTACT, this.onEndContact, this);
-        }
+        this.node.setPosition(p.x, nextY, p.z);
     }
 
     public tryJump(): void {
-        if (!this.stateMachine || !this.stateMachine.isGameplayActive()) {
-            return;
-        }
+        if (this.pauseService.isGamePaused()) return;
+        if (!this.gameStateController || !this.gameStateController.isGameplayActive()) return;
+        if (!this.isGrounded) return;
 
-        if (this.movement) {
-            this.movement.tryJump();
-        }
+        this.isGrounded = false;
+        this.verticalVelocity = this.jumpVelocityPixelsPerSecond;
 
-        if (this.animationController) {
-            this.animationController.triggerJump();
-        }
+        this.node.emit('PlayerJumped');
     }
 
-    public setGrounded(isGrounded: boolean): void {
-        if (this.animationController) {
-            this.animationController.setGrounded(isGrounded);
-        }
+    public isGroundedNow(): boolean {
+        return this.isGrounded;
     }
 
-    private onBeginContact(selfCollider: Collider2D, otherCollider: Collider2D, _contact: IPhysics2DContact | null): void {
-        if (selfCollider !== this.bodyCollider) {
-            return;
-        }
-
-        const otherTag = otherCollider.tag as number;
-        
-        if (otherTag === CollisionTags.Ground) {
-            this.setGrounded(true);
-            return;
-        }
-
-        if (otherTag === CollisionTags.Enemy || otherTag === CollisionTags.Cone) {
-            this.handleObstacleCollision();
-        }
-    }
-
-    private handleObstacleCollision(): void {
-        if (!this.invulnerability || this.invulnerability.isInvulnerableNow()) {
-            return;
-        }
-
-        this.invulnerability.startInvulnerability();
+    private snapToGround(): void {
+        const p = this.node.position;
+        this.node.setPosition(p.x, this.groundY, p.z);
+        this.isGrounded = true;
+        this.verticalVelocity = 0;
     }
 }
-

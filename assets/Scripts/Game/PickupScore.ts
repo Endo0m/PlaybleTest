@@ -1,46 +1,63 @@
-import { _decorator, Component, Collider2D, Contact2DType, IPhysics2DContact } from 'cc';
+import { _decorator, Component } from 'cc';
+import { CollisionWorld, Collidable, HitboxKind } from '../Core/CollisionWorld';
+import { Hitbox2D } from '../Core/Hitbox2D';
+import { GameEvents } from '../Core/Events/GameEvents';
+import { PickupFxService } from '../../Scripts/Game/FX/PickupFxService';
 
 const { ccclass, property } = _decorator;
 
-/**
- * Пикап очков - собираемый предмет, который добавляет очки
- */
-@ccclass('PickupScore')
-export class PickupScore extends Component {
+@ccclass('PickupScoreAabb')
+export class PickupScore extends Component implements Collidable {
     @property
-    public scoreAmount: number = 10;
+    public scoreAmount = 10;
 
-    @property({ type: Collider2D })
-    public collider: Collider2D | null = null;
+    @property({ type: Hitbox2D })
+    public hitbox: Hitbox2D | null = null;
 
-    private collected: boolean = false;
+    @property({ type: CollisionWorld })
+    public collisionWorld: CollisionWorld | null = null;
 
-    public onLoad(): void {
-        const collider = this.collider || this.node.getComponent(Collider2D);
-        if (collider) {
-            collider.on(Contact2DType.BEGIN_CONTACT, this.onCollect, this);
+    @property({ type: PickupFxService })
+    public pickupFxService: PickupFxService | null = null;
+
+    public kind: HitboxKind = HitboxKind.Pickup;
+
+    private collected = false;
+
+    onEnable(): void {
+        if (!this.hitbox) {
+            this.hitbox = this.node.getComponent(Hitbox2D);
+        }
+
+        if (!this.collisionWorld) {
+            const scene = this.node.scene;
+            this.collisionWorld = scene ? scene.getComponentInChildren(CollisionWorld) : null;
+        }
+
+        this.collisionWorld?.register(this);
+
+        if (!this.pickupFxService) {
+            const scene = this.node.scene;
+            this.pickupFxService = scene ? scene.getComponentInChildren(PickupFxService) : null;
         }
     }
 
-    public onDestroy(): void {
-        const collider = this.collider || this.node.getComponent(Collider2D);
-        if (collider) {
-            collider.off(Contact2DType.BEGIN_CONTACT, this.onCollect, this);
-        }
+    onDisable(): void {
+        this.collisionWorld?.unregister(this);
     }
 
-    private onCollect(_selfCollider: Collider2D, otherCollider: Collider2D, _contact: IPhysics2DContact | null): void {
-        if (this.collected) {
-            return;
-        }
+    public isActive(): boolean {
+        return this.node.activeInHierarchy && !this.collected;
+    }
 
-        if (otherCollider.tag !== 0) {
-            return;
-        }
-
+    public onHitPlayer(): void {
+        if (this.collected) return;
         this.collected = true;
-        this.node.emit('PickupCollected', this.scoreAmount);
+
+        this.pickupFxService?.playPickupFly(this.node);
+
+        GameEvents.instance.emit(GameEvents.PickupCollected, this.scoreAmount);
+
         this.node.active = false;
     }
 }
-

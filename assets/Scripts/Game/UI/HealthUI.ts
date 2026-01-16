@@ -1,5 +1,4 @@
-import { _decorator, Component, Node, SpriteFrame } from 'cc';
-import { HealthSystem } from '../Systems/HealthSystem';
+import { _decorator, Component, Node } from 'cc';
 import { GameEvents } from '../../Core/Events/GameEvents';
 
 const { ccclass, property } = _decorator;
@@ -9,53 +8,49 @@ export class HealthUI extends Component {
     @property({ type: [Node] })
     public heartNodes: Node[] = [];
 
-    @property({ type: SpriteFrame })
-    public fullHeartSprite: SpriteFrame | null = null;
+    @property
+    public defaultMaxHealth: number = 3;
 
-    @property({ type: SpriteFrame })
-    public emptyHeartSprite: SpriteFrame | null = null;
+    private currentHealth: number = 0;
+    private maxHealth: number = 0;
 
-    private healthSystem: HealthSystem | null = null;
-
-    public initialize(healthSystem: HealthSystem): void {
-        this.healthSystem = healthSystem;
+    onEnable(): void {
         GameEvents.instance.on(GameEvents.HealthChanged, this.onHealthChanged, this);
-        this.updateDisplay();
+
+        // Если событие ещё не прилетало — покажем дефолт (обычно 3/3).
+        // Как только система здоровья пришлёт реальное значение, UI обновится.
+        if (this.maxHealth <= 0) {
+            this.currentHealth = this.defaultMaxHealth;
+            this.maxHealth = this.defaultMaxHealth;
+            this.apply();
+        }
     }
 
-    public onDestroy(): void {
+    onDisable(): void {
         GameEvents.instance.off(GameEvents.HealthChanged, this.onHealthChanged, this);
     }
 
     private onHealthChanged(currentHealth: number, maxHealth: number): void {
-        this.updateDisplay();
+        this.currentHealth = Math.max(0, currentHealth);
+        this.maxHealth = Math.max(0, maxHealth);
+        this.apply();
     }
 
-    private updateDisplay(): void {
-        if (!this.healthSystem) {
-            return;
-        }
-
-        const currentHealth = this.healthSystem.getCurrentHealth();
-        const maxHealth = this.healthSystem.getMaxHealth();
+    private apply(): void {
+        const current = this.currentHealth;
+        const max = this.maxHealth;
 
         for (let i = 0; i < this.heartNodes.length; i++) {
             const heartNode = this.heartNodes[i];
-            if (!heartNode) {
-                continue;
-            }
+            if (!heartNode) continue;
 
-            const sprite = heartNode.getComponent('Sprite') as any;
-            if (sprite && this.fullHeartSprite && this.emptyHeartSprite) {
-                if (i < currentHealth) {
-                    sprite.spriteFrame = this.fullHeartSprite;
-                } else {
-                    sprite.spriteFrame = this.emptyHeartSprite;
-                }
-            }
+            // Сердце вообще существует (если max меньше количества нод)
+            const exists = i < max;
 
-            heartNode.active = i < maxHealth;
+            // Сердце видно, только если оно в пределах currentHealth
+            const visible = i < current;
+
+            heartNode.active = exists && visible;
         }
     }
 }
-
