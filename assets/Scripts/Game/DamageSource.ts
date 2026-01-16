@@ -61,8 +61,8 @@ export class DamageSource extends Component implements Collidable {
         this.hasHit = true;
         receiver.takeDamage(this.damageAmount);
 
-        if (this.disableAfterHit) {
-            this.node.active = false;
-        }
+        // if (this.disableAfterHit) {
+        //     this.node.active = false;
+        // }
     }
 }
