@@ -1,20 +1,9 @@
 import { _decorator, Component, Node } from 'cc';
-import { GameStateController, GameState } from '../../Core/GameStateController';
-import { InputTapRouter, TapCallback } from '../../Core/InputTapRouter';
 
 const { ccclass, property } = _decorator;
 
 @ccclass('PanelsController')
 export class PanelsController extends Component {
-    @property({ type: GameStateController })
-    public gameStateController: GameStateController | null = null;
-
-    @property({ type: InputTapRouter })
-    public inputTapRouter: InputTapRouter | null = null;
-
-    @property({ type: Node })
-    public tutorialPanel: Node | null = null;
-
     @property({ type: Node })
     public victoryPanel: Node | null = null;
 
@@ -24,50 +13,59 @@ export class PanelsController extends Component {
     @property({ type: Node })
     public offerPanel: Node | null = null;
 
-    private onTapTutorial: TapCallback | null = null;
+    @property({ type: Node })
+    public defeatFlashNode: Node | null = null;
+
+    @property
+    public defeatFlashDurationSeconds: number = 1.0;
+
+    private defeatFlowToken: number = 0;
 
     onLoad(): void {
         this.hideAllPanels();
 
-        if (this.inputTapRouter) {
-            this.onTapTutorial = this.onTutorialTap.bind(this);
-            this.inputTapRouter.registerTapTutorial(this.onTapTutorial);
-        }
-
         const scene = this.node.scene;
         if (scene) {
-            scene.on('TutorialTriggered', this.showTutorial, this);
             scene.on('FinishTriggered', this.showVictory, this);
-            scene.on('PlayerDied', this.showDefeat, this);
+            scene.on('PlayerDied', this.showDefeatFlow, this);
         }
     }
 
     onDestroy(): void {
-        if (this.inputTapRouter && this.onTapTutorial) {
-            this.inputTapRouter.unregisterTapTutorial(this.onTapTutorial);
-        }
-
         const scene = this.node.scene;
         if (scene) {
-            scene.off('TutorialTriggered', this.showTutorial, this);
             scene.off('FinishTriggered', this.showVictory, this);
-            scene.off('PlayerDied', this.showDefeat, this);
+            scene.off('PlayerDied', this.showDefeatFlow, this);
         }
-    }
-
-    public showTutorial(): void {
-        this.hideAllPanels();
-        if (this.tutorialPanel) this.tutorialPanel.active = true;
     }
 
     public showVictory(): void {
+        this.defeatFlowToken++;
+
         this.hideAllPanels();
         if (this.victoryPanel) this.victoryPanel.active = true;
+
+        // Если нужно — здесь можно emit событие для конфетти:
+        this.node.scene?.emit('VictoryShown');
     }
 
-    public showDefeat(): void {
+    public showDefeatFlow(): void {
+        this.defeatFlowToken++;
+        const token = this.defeatFlowToken;
+
         this.hideAllPanels();
-        if (this.defeatPanel) this.defeatPanel.active = true;
+
+        if (this.defeatFlashNode) {
+            this.defeatFlashNode.active = true;
+        }
+
+        // Через секунду скрываем flash и показываем панель
+        this.scheduleOnce(() => {
+            if (token !== this.defeatFlowToken) return;
+
+            if (this.defeatFlashNode) this.defeatFlashNode.active = false;
+            if (this.defeatPanel) this.defeatPanel.active = true;
+        }, this.defeatFlashDurationSeconds);
     }
 
     public showOffer(): void {
@@ -79,19 +77,9 @@ export class PanelsController extends Component {
     }
 
     private hideAllPanels(): void {
-        if (this.tutorialPanel) this.tutorialPanel.active = false;
         if (this.victoryPanel) this.victoryPanel.active = false;
         if (this.defeatPanel) this.defeatPanel.active = false;
         if (this.offerPanel) this.offerPanel.active = false;
-    }
-
-    private onTutorialTap(): void {
-        if (!this.gameStateController) return;
-
-        if (this.gameStateController.isState(GameState.Tutorial)) {
-            this.hideAllPanels();
-            this.gameStateController.transitionTo(GameState.Running);
-            this.node.scene?.emit('TutorialEnded');
-        }
+        if (this.defeatFlashNode) this.defeatFlashNode.active = false;
     }
 }

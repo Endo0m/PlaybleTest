@@ -4,7 +4,7 @@ import { InputTapRouter, TapCallback } from '../Core/InputTapRouter';
 import { PlayerController } from './Player/PlayerController';
 import { PlayerDamageReceiver } from './Player/PlayerDamageReceiver';
 import { WorldScroller } from './Systems/WorldScroller';
-
+import { TutorialOverlay } from '../Game/UI/TutorialOverlay';
 const { ccclass, property } = _decorator;
 
 @ccclass('GameBootstrap')
@@ -20,7 +20,7 @@ export class GameBootstrap extends Component {
 
     @property({ type: WorldScroller })
     public worldScroller: WorldScroller | null = null;
-
+    @property({ type: TutorialOverlay }) public tutorialOverlay: TutorialOverlay | null = null;
     @property({ type: PlayerDamageReceiver })
     public playerDamageReceiver: PlayerDamageReceiver | null = null;
 
@@ -93,6 +93,8 @@ export class GameBootstrap extends Component {
         if (!this.gameStateController) return;
 
         this.gameStateController.transitionTo(GameState.Running);
+        this.tutorialOverlay?.hideStart();
+
         this.playerController?.node.emit('GameStarted');
     }
 
