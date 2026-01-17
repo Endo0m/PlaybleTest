@@ -1,6 +1,7 @@
 import { _decorator, Component } from 'cc';
 import { CollisionWorld, Collidable, HitboxKind } from '../Core/CollisionWorld';
 import { Hitbox2D } from '../Core/Hitbox2D';
+import { GameEvents } from '../Core/Events/GameEvents';
 
 const { ccclass, property } = _decorator;
 
@@ -25,6 +26,8 @@ export class TriggerZone extends Component implements Collidable {
     private triggered = false;
 
     onEnable(): void {
+        this.triggered = false;
+
         if (!this.hitbox) {
             this.hitbox = this.node.getComponent(Hitbox2D);
         }
@@ -49,13 +52,14 @@ export class TriggerZone extends Component implements Collidable {
         if (this.triggered) return;
         this.triggered = true;
 
-        const scene = this.node.scene;
-        if (!scene) return;
-
         if (this.triggerType === TriggerType.Tutorial) {
-            scene.emit('TutorialTriggered');
-        } else if (this.triggerType === TriggerType.Finish) {
-            scene.emit('FinishTriggered');
+            GameEvents.instance.emit(GameEvents.TutorialTriggered);
+            return;
+        }
+
+        if (this.triggerType === TriggerType.Finish) {
+            GameEvents.instance.emit(GameEvents.PlayerVictory);
+            return;
         }
     }
 }

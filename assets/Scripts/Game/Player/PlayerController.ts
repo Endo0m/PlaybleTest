@@ -1,6 +1,7 @@
 import { _decorator, Component } from 'cc';
-import { GameStateController } from '../../Core/GameStateController';
+import { GameStateController, GameState } from '../../Core/GameStateController';
 import { PauseService } from '../../Core/PauseService';
+import { GameEvents } from '../../Core/Events/GameEvents';
 
 const { ccclass, property } = _decorator;
 
@@ -21,10 +22,18 @@ export class PlayerController extends Component {
     private verticalVelocity = 0;
     private isGrounded = true;
 
+    private canJump = false;
+
     private readonly pauseService: PauseService = PauseService.instance;
 
-    onLoad(): void {
+    onEnable(): void {
+        GameEvents.instance.on(GameEvents.TutorialDismissed, this.unlockJump, this);
+        this.canJump = false;
         this.snapToGround();
+    }
+
+    onDisable(): void {
+        GameEvents.instance.off(GameEvents.TutorialDismissed, this.unlockJump, this);
     }
 
     update(deltaTime: number): void {
@@ -49,18 +58,21 @@ export class PlayerController extends Component {
     }
 
     public tryJump(): void {
+        if (!this.canJump) return;
         if (this.pauseService.isGamePaused()) return;
-        if (!this.gameStateController || !this.gameStateController.isGameplayActive()) return;
+
+        const controller = this.gameStateController;
+        if (!controller || controller.getCurrentState() !== GameState.Running) return;
+
         if (!this.isGrounded) return;
 
         this.isGrounded = false;
         this.verticalVelocity = this.jumpVelocityPixelsPerSecond;
-
         this.node.emit('PlayerJumped');
     }
 
-    public isGroundedNow(): boolean {
-        return this.isGrounded;
+    private unlockJump(): void {
+        this.canJump = true;
     }
 
     private snapToGround(): void {

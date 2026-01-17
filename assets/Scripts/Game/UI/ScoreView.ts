@@ -41,10 +41,9 @@ export class ScoreView extends Component {
         this.updateDisplay();
     }
 
-   private updateDisplay(): void {
-    if (this.scoreLabel) {
-        this.scoreLabel.string = `$${this.currentScore}`;
+    private updateDisplay(): void {
+        if (this.scoreLabel) {
+            this.scoreLabel.string = `$${this.currentScore}`;
+        }
     }
-}
-
 }

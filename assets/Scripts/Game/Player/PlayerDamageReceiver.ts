@@ -76,7 +76,7 @@ export class PlayerDamageReceiver extends Component {
         GameEvents.instance.emit(GameEvents.HealthChanged, this.currentHealth, this.maxHealth);
 
         if (this.currentHealth <= 0) {
-            this.node.emit('PlayerDied');
+            GameEvents.instance.emit(GameEvents.PlayerDied);
         }
 
         return true;

@@ -2,12 +2,12 @@
   "ver": "2.0.4",
   "importer": "animation-clip",
   "imported": true,
-  "uuid": "b627b836-45e1-486f-8d38-5bab2d59ee14",
+  "uuid": "f1e5a8a8-180f-4bcb-ad5c-c38710ec1e32",
   "files": [
     ".bin"
   ],
   "subMetas": {},
   "userData": {
-    "name": "damage"
+    "name": "idleFlash"
   }
 }

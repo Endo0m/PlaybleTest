@@ -12,7 +12,6 @@ export class InputTapRouter extends Component {
 
     private onTapStartGameCallbacks: TapCallback[] = [];
     private onTapJumpCallbacks: TapCallback[] = [];
-    private onTapTutorialCallbacks: TapCallback[] = [];
 
     onEnable(): void {
         input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
@@ -48,24 +47,9 @@ export class InputTapRouter extends Component {
         }
     }
 
-    public registerTapTutorial(callback: TapCallback): void {
-        if (this.onTapTutorialCallbacks.indexOf(callback) === -1) {
-            this.onTapTutorialCallbacks.push(callback);
-        }
-    }
-
-    public unregisterTapTutorial(callback: TapCallback): void {
-        const index = this.onTapTutorialCallbacks.indexOf(callback);
-        if (index !== -1) {
-            this.onTapTutorialCallbacks.splice(index, 1);
-        }
-    }
-
     private onTouchStart(_event: EventTouch): void {
         const controller = this.gameStateController;
-        if (!controller) {
-            return;
-        }
+        if (!controller) return;
 
         const state = controller.getCurrentState();
 
@@ -74,13 +58,13 @@ export class InputTapRouter extends Component {
             return;
         }
 
-        if (state === GameState.Running) {
-            for (const cb of this.onTapJumpCallbacks) cb();
+        // В Tutorial вообще ничего не делаем — его тап обрабатывает TutorialOverlay.
+        if (state === GameState.Tutorial) {
             return;
         }
 
-        if (state === GameState.Tutorial) {
-            for (const cb of this.onTapTutorialCallbacks) cb();
+        if (state === GameState.Running) {
+            for (const cb of this.onTapJumpCallbacks) cb();
             return;
         }
     }

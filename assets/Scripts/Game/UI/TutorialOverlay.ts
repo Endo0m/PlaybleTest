@@ -1,6 +1,7 @@
-import { _decorator, Component, Node, Label, EventTouch } from 'cc';
+import { _decorator, Component, Node, Label, input, Input, EventTouch, UIOpacity, Vec3 } from 'cc';
 import { GameStateController, GameState } from '../../Core/GameStateController';
 import { PlayerController } from '../../Game/Player/PlayerController';
+import { GameEvents } from '../../Core/Events/GameEvents';
 
 const { ccclass, property } = _decorator;
 
@@ -15,9 +16,6 @@ export class TutorialOverlay extends Component {
     @property({ type: Node })
     public overlayRoot: Node | null = null;
 
-    @property({ type: Node })
-    public tapCatcher: Node | null = null;
-
     @property({ type: Label })
     public tutorialTextLabel: Label | null = null;
 
@@ -30,102 +28,100 @@ export class TutorialOverlay extends Component {
     @property
     public startVisible: boolean = true;
 
-    private hasTriggeredTutorial = false;
     private isTriggeredMode = false;
+    private awaitingTriggeredTap = false;
 
-    onLoad(): void {
-        const root = this.overlayRoot ?? this.node;
-        this.overlayRoot = root;
+    private getRoot(): Node {
+        return this.overlayRoot ?? this.node;
+    }
+
+    onEnable(): void {
+        GameEvents.instance.on(GameEvents.TutorialTriggered, this.onTutorialTriggered, this);
 
         if (this.tutorialTextLabel) {
             this.tutorialTextLabel.string = this.startText;
         }
 
-        root.active = this.startVisible;
+        this.setVisible(this.startVisible);
 
-        this.node.scene?.on('TutorialTriggered', this.onTutorialTriggered, this);
-
-        // В стартовом режиме не ловим тапы: старт игры делает InputTapRouter.
-        this.setTapCatcherEnabled(false);
+        if (this.startVisible) {
+            input.on(Input.EventType.TOUCH_START, this.onStartTap, this);
+        }
     }
 
-    onDestroy(): void {
-        this.node.scene?.off('TutorialTriggered', this.onTutorialTriggered, this);
-        this.setTapCatcherEnabled(false);
+    onDisable(): void {
+        GameEvents.instance.off(GameEvents.TutorialTriggered, this.onTutorialTriggered, this);
+        input.off(Input.EventType.TOUCH_START, this.onStartTap, this);
+        input.off(Input.EventType.TOUCH_START, this.onTriggeredTap, this);
     }
 
-    /**
-     * Дёргай из GameBootstrap при старте игры (по первому тапу),
-     * чтобы скрыть стартовый оверлей.
-     */
+    /** Вызывается из GameBootstrap на старте, чтобы убрать стартовый оверлей. */
     public hideStart(): void {
         if (this.isTriggeredMode) return;
-        this.hide();
+
+        this.setVisible(false);
+        input.off(Input.EventType.TOUCH_START, this.onStartTap, this);
+    }
+
+    private onStartTap(_event: EventTouch): void {
+        const controller = this.gameStateController;
+        if (!controller) return;
+        if (controller.getCurrentState() !== GameState.Waiting) return;
+
+        controller.transitionTo(GameState.Running);
+        GameEvents.instance.emit(GameEvents.GameStarted);
+
+        this.setVisible(false);
+        input.off(Input.EventType.TOUCH_START, this.onStartTap, this);
     }
 
     private onTutorialTriggered(): void {
-        if (this.hasTriggeredTutorial) return;
-        this.hasTriggeredTutorial = true;
+        if (this.isTriggeredMode) return;
 
         this.isTriggeredMode = true;
+        this.awaitingTriggeredTap = true;
 
         if (this.tutorialTextLabel) {
             this.tutorialTextLabel.string = this.triggerText;
         }
 
-        if (this.gameStateController) {
-            this.gameStateController.transitionTo(GameState.Tutorial);
-        }
+        this.gameStateController?.transitionTo(GameState.Tutorial);
+        this.setVisible(true);
 
-        this.show();
-
-        // В триггерном режиме ловим тапы и глушим их, чтобы не ушли в InputTapRouter.
-        this.setTapCatcherEnabled(true);
+        input.off(Input.EventType.TOUCH_START, this.onTriggeredTap, this);
+        input.on(Input.EventType.TOUCH_START, this.onTriggeredTap, this);
     }
 
-    private show(): void {
-        const root = this.overlayRoot ?? this.node;
-        root.active = true;
-    }
+    private onTriggeredTap(_event: EventTouch): void {
+        if (!this.awaitingTriggeredTap) return;
 
-    private hide(): void {
-        const root = this.overlayRoot ?? this.node;
-        root.active = false;
+        const controller = this.gameStateController;
+        if (!controller) return;
+        if (controller.getCurrentState() !== GameState.Tutorial) return;
 
-        // После закрытия триггерного туториала перестаём ловить тапы.
-        if (this.isTriggeredMode) {
-            this.setTapCatcherEnabled(false);
-        }
-    }
+        this.awaitingTriggeredTap = false;
 
-    private setTapCatcherEnabled(enabled: boolean): void {
-        const root = this.overlayRoot ?? this.node;
-        const catcher = this.tapCatcher ?? root;
+        controller.transitionTo(GameState.Running);
+        GameEvents.instance.emit(GameEvents.TutorialDismissed);
 
-        if (enabled) {
-            catcher.on(Node.EventType.TOUCH_START, this.onTriggeredTap, this, true);
-        } else {
-            catcher.off(Node.EventType.TOUCH_START, this.onTriggeredTap, this, true);
-        }
-    }
+        this.setVisible(false);
+        input.off(Input.EventType.TOUCH_START, this.onTriggeredTap, this);
 
-    private onTriggeredTap(event: EventTouch): void {
-        // Ключевое: не даём тапу попасть в InputTapRouter,
-        // иначе будет двойная логика (закрытие + прыжок/непрыжок).
-        event.propagationStopped = true;
-
-        // 1) Снимаем паузу
-        if (this.gameStateController) {
-            this.gameStateController.transitionTo(GameState.Running);
-        }
-
-        // 2) Закрываем панель
-        this.hide();
-
-        // 3) И сразу выполняем прыжок тем же тапом
-        // (после transitionTo(Running), иначе tryJump откажется)
+        // Важно: прыжок должен случиться после перехода в Running.
         this.playerController?.tryJump();
+    }
 
-        this.node.scene?.emit('TutorialEnded');
+    private setVisible(visible: boolean): void {
+        const root = this.getRoot();
+
+        // Если root == this.node — не выключаем active (иначе component отключится).
+        if (root === this.node) {
+            const opacity = this.node.getComponent(UIOpacity) ?? this.node.addComponent(UIOpacity);
+            opacity.opacity = visible ? 255 : 0;
+            this.node.setScale(visible ? Vec3.ONE : new Vec3(0, 0, 1));
+            return;
+        }
+
+        root.active = visible;
     }
 }
